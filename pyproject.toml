@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "q2-tgen-automation"
+dynamic = ["version"]
+description = "Reusable QIIME 2 actions for automated amplicon workflows."
+readme = "README.md"
+requires-python = ">=3.10"
+
+[project.entry-points."qiime2.plugins"]
+"q2-tgen-automation" = "q2_tgen_automation.plugin_setup:plugin"
+
+[tool.setuptools.dynamic]
+version = {attr = "q2_tgen_automation.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["q2_tgen_automation*"]
