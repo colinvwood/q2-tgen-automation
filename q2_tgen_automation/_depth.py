@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from fractions import Fraction
 from math import ceil
 
@@ -16,15 +17,78 @@ STRATEGIES = (
 
 
 def select_sampling_depth(
+    table: biom.Table,
     strategy: str,
     group: CategoricalMetadataColumn | None = None,
     sample_weight: float | None = None,
     feature_weight: float | None = None,
     min_sample_proportion: float | None = None,
+    min_sample_count: int | None = None,
 ) -> int:
     '''
+    Select a sampling depth using the requested strategy.
+
+    The weighted and proportional-richness strategies maximize their scores,
+    choosing the greater depth on ties. The sample- and group-retention
+    strategies calculate the highest depth meeting their retention targets
+    directly. Only parameters relevant to the selected strategy are used.
+    Parameters required by that strategy must be supplied explicitly.
     '''
-    pass
+    if strategy == 'weight-sample-and-features':
+        if sample_weight is None or feature_weight is None:
+            raise ValueError(
+                'The weighted strategy requires `sample_weight` and '
+                '`feature_weight`.'
+            )
+        return _maximize_sampling_depth(
+            table,
+            lambda depth: weight_sample_and_features(
+                table, depth, sample_weight, feature_weight
+            ),
+        )
+
+    if strategy == 'proportional-richness-retention':
+        return _maximize_sampling_depth(
+            table, lambda depth: proportional_richness_retention(table, depth)
+        )
+
+    if strategy == 'guarantee-samples':
+        if min_sample_proportion is None:
+            raise ValueError(
+                'The sample-retention strategy requires '
+                '`min_sample_proportion`.'
+            )
+        return guarantee_samples(table, min_sample_proportion)
+
+    if strategy == 'group-retention':
+        if group is None:
+            raise ValueError('The group-retention strategy requires `group`.')
+        return group_retention(
+            table, group, min_sample_proportion, min_sample_count
+        )
+
+
+def _maximize_sampling_depth(
+    table: biom.Table,
+    score: Callable[[int], float],
+) -> int:
+    '''
+    Maximize a score over distinct positive sample read totals.
+
+    This search applies to scores that cannot decrease as depth increases
+    while the retained sample set stays unchanged, as with our weighted and
+    proportional-richness scores. Each such interval ends at a sample total,
+    just before samples are dropped, so these candidates include a global
+    maximum among depths retaining at least one sample.
+
+    Evaluate each candidate once and choose the greater depth on exact ties.
+    '''
+    totals = table.sum(axis='sample')
+    depths = [int(total) for total in np.unique(totals[totals > 0])]
+    if not depths:
+        raise ValueError('The table must contain at least one positive count.')
+
+    return max(depths, key=lambda depth: (score(depth), depth))
 
 
 def weight_sample_and_features(
